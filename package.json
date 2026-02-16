@@ -1,0 +1,65 @@
+{
+  "name": "@alexwoo-awso/openclaw-rocketchat",
+  "version": "0.1.0",
+  "description": "OpenClaw Rocket.Chat channel plugin",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexwoo-awso/openclaw-rocketchat.git"
+  },
+  "homepage": "https://github.com/alexwoo-awso/openclaw-rocketchat#readme",
+  "bugs": {
+    "url": "https://github.com/alexwoo-awso/openclaw-rocketchat/issues"
+  },
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "prepack": "npm run build && npm run manifest:schema",
+    "manifest:schema": "tsx scripts/generate-manifest-schema.ts",
+    "lint": "echo 'lint: not configured'"
+  },
+  "devDependencies": {
+    "openclaw": "^2026.2.15",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.7.3",
+    "zod-to-json-schema": "^3.24.6"
+  },
+  "overrides": {
+    "tar": "^7.5.7",
+    "cmake-js": "^7.4.1"
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "channel": {
+      "id": "rocketchat",
+      "label": "Rocket.Chat",
+      "selectionLabel": "Rocket.Chat (plugin)",
+      "docsPath": "/channels/rocketchat",
+      "docsLabel": "rocketchat",
+      "blurb": "self-hosted team chat; install the plugin to enable.",
+      "order": 66
+    },
+    "install": {
+      "npmSpec": "@alexwoo-awso/openclaw-rocketchat",
+      "localPath": "extensions/rocketchat",
+      "defaultChoice": "npm"
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "id": "rocketchat",
+  "name": "Rocket.Chat",
+  "description": "Rocket.Chat channel plugin",
+  "version": "0.1.0",
+  "channels": [
+    "rocketchat"
+  ],
+  "configSchema": {
+    "$ref": "#/definitions/RocketChatConfig",
+    "definitions": {
+      "RocketChatConfig": {}
+    },
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}
