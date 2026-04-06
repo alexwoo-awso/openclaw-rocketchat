@@ -10,6 +10,8 @@ export type RocketChatChatMode = "oncall" | "onmessage" | "onchar";
 export type RocketChatRoomConfig = {
   /** Keep mention-gated group conversations active for N minutes after a mention. */
   conversationWindowMinutes?: number;
+  /** Maximum outbound attachment size in megabytes for this room. */
+  mediaMaxMb?: number;
 };
 
 export type RocketChatAccountConfig = {
@@ -44,6 +46,8 @@ export type RocketChatAccountConfig = {
   requireMention?: boolean;
   /** Keep mention-gated rooms active for N minutes after a mention. Disabled when unset or 0. */
   conversationWindowMinutes?: number;
+  /** Maximum outbound attachment size in megabytes for this account. */
+  mediaMaxMb?: number;
   /** Direct message policy (pairing/allowlist/open/disabled). */
   dmPolicy?: DmPolicy;
   /** Allowlist for direct messages (user ids or @usernames). */

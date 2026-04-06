@@ -27,7 +27,7 @@ import { sendMessageRocketChat } from "./rocketchat/send.js";
 import { looksLikeRocketChatTargetId, normalizeRocketChatMessagingTarget } from "./normalize.js";
 import { getRocketChatRuntime } from "./runtime.js";
 import { Type } from "@sinclair/typebox";
-import type { ChannelMessageActionAdapter } from "openclaw/plugin-sdk/signal";
+import type { ChannelMessageActionAdapter } from "openclaw/plugin-sdk/channel-contract";
 
 const meta = {
   id: "rocketchat",
@@ -64,7 +64,6 @@ const rocketchatMessageActions: ChannelMessageActionAdapter = {
   describeMessageTool() {
     return {
       actions: ["send"],
-      capabilities: ["media"],
       schema: {
         visibility: "current-channel",
         properties: {
@@ -83,16 +82,18 @@ const rocketchatMessageActions: ChannelMessageActionAdapter = {
       message?: string;
       threadId?: string;
       accountId?: string;
+      path?: string;
       mediaUrl?: string;
     };
     const to = params.to?.trim();
     if (!to) {
-      return { content: [{ type: "text", text: "to is required" }] };
+      return { content: [{ type: "text", text: "to is required" }], details: null };
     }
+    const mediaSource = params.path?.trim() || params.mediaUrl?.trim() || undefined;
     const result = await sendMessageRocketChat(to, params.message ?? "", {
       accountId: params.accountId ?? ctx.accountId ?? undefined,
       replyToId: params.threadId ?? undefined,
-      mediaUrl: params.mediaUrl ?? undefined,
+      mediaUrl: mediaSource,
       mediaAccess: ctx.mediaAccess,
       mediaLocalRoots: ctx.mediaLocalRoots,
       mediaReadFile: ctx.mediaReadFile,

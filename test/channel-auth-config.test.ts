@@ -1,16 +1,45 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rocketchatPlugin } from "../src/channel.js";
-import { resolveRocketChatAccount } from "../src/rocketchat/accounts.js";
+import {
+  isRocketChatAccountConfigured,
+  listRocketChatAccountIds,
+  resolveDefaultRocketChatAccountId,
+  resolveRocketChatAccount,
+} from "../src/rocketchat/accounts.js";
+import { loginWithPassword } from "../src/rocketchat/client.js";
+import { probeRocketChat } from "../src/rocketchat/probe.js";
 
 test("username/password account is treated as configured", () => {
+  const cfg = {
+    channels: {
+      rocketchat: {
+        accounts: {
+          default: {
+            baseUrl: "https://chat.example.com",
+            username: "bot-test",
+            password: "secret",
+            enabled: true,
+          },
+        },
+      },
+    },
+  };
+
+  const account = resolveRocketChatAccount({ cfg });
+
+  assert.equal(account.usesLoginAuth, true);
+  assert.equal(isRocketChatAccountConfigured(account), true);
+  assert.deepEqual(listRocketChatAccountIds(cfg), ["default"]);
+  assert.equal(resolveDefaultRocketChatAccountId(cfg), "default");
+});
+
+test("login auth is not treated as configured without a base URL", () => {
   const account = resolveRocketChatAccount({
     cfg: {
       channels: {
         rocketchat: {
           accounts: {
             default: {
-              baseUrl: "https://chat.example.com",
               username: "bot-test",
               password: "secret",
               enabled: true,
@@ -22,55 +51,10 @@ test("username/password account is treated as configured", () => {
   });
 
   assert.equal(account.usesLoginAuth, true);
-  assert.equal(rocketchatPlugin.config.isConfigured(account), true);
-
-  const snapshot = rocketchatPlugin.status.buildAccountSnapshot({
-    account,
-    runtime: undefined,
-    probe: undefined,
-  });
-  assert.equal(snapshot.configured, true);
+  assert.equal(isRocketChatAccountConfigured(account), false);
 });
 
-test("setup wizard status treats username/password account as configured", async () => {
-  const configured = await rocketchatPlugin.setupWizard?.status.resolveConfigured({
-    cfg: {
-      channels: {
-        rocketchat: {
-          accounts: {
-            default: {
-              baseUrl: "https://chat.example.com",
-              username: "bot-test",
-              password: "secret",
-              enabled: true,
-            },
-          },
-        },
-      },
-    },
-  });
-
-  assert.equal(configured, true);
-});
-
-test("probeAccount supports username/password login", async () => {
-  const account = resolveRocketChatAccount({
-    cfg: {
-      channels: {
-        rocketchat: {
-          accounts: {
-            default: {
-              baseUrl: "https://chat.example.com",
-              username: "bot-test",
-              password: "secret",
-              enabled: true,
-            },
-          },
-        },
-      },
-    },
-  });
-
+test("loginWithPassword and probeRocketChat support username/password auth flow", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: URL | string, init?: RequestInit) => {
     const url = String(input);
@@ -108,10 +92,19 @@ test("probeAccount supports username/password login", async () => {
   }) as typeof fetch;
 
   try {
-    const probe = await rocketchatPlugin.status.probeAccount({
-      account,
-      timeoutMs: 2500,
+    const login = await loginWithPassword({
+      baseUrl: "https://chat.example.com",
+      username: "bot-test",
+      password: "secret",
     });
+    assert.deepEqual(login, { authToken: "token-123", userId: "user-123" });
+
+    const probe = await probeRocketChat(
+      "https://chat.example.com",
+      login.authToken,
+      login.userId,
+      2500,
+    );
     assert.equal(probe.ok, true);
     assert.equal(probe.bot?._id, "user-123");
     assert.equal(probe.bot?.username, "bot-test");

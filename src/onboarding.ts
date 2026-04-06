@@ -77,11 +77,11 @@ function patchRocketChatAccount(
   clearKeys: string[] = [],
 ): OpenClawConfig {
   if (accountId === DEFAULT_ACCOUNT_ID) {
-    const next = {
+    const next: Record<string, unknown> = {
       ...cfg.channels?.rocketchat,
       enabled: true,
       ...patch,
-    } as Record<string, unknown>;
+    };
     for (const key of clearKeys) {
       delete next[key];
     }
@@ -97,7 +97,7 @@ function patchRocketChatAccount(
   const currentAccount = cfg.channels?.rocketchat?.accounts?.[accountId] as
     | Record<string, unknown>
     | undefined;
-  const nextAccount = {
+  const nextAccount: Record<string, unknown> = {
     ...currentAccount,
     enabled: currentAccount?.enabled ?? true,
     ...patch,
