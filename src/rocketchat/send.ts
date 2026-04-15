@@ -52,6 +52,10 @@ function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
 
+function isRocketChatAuthError(error: unknown): boolean {
+  return error instanceof Error && /Rocket\.Chat API (401|403)\b/.test(error.message);
+}
+
 function parseRocketChatTarget(raw: string): RocketChatTarget {
   const trimmed = raw.trim();
   if (!trimmed) {
@@ -143,112 +147,140 @@ export async function sendMessageRocketChat(
       `Rocket.Chat baseUrl missing for account "${account.accountId}".`,
     );
   }
+  const username = account.username?.trim();
+  const password = account.password?.trim();
+  const canRelogin = Boolean(username && password);
 
-  // Fall back to username/password login if no token
-  if (!authToken || !userId) {
-    const username = account.username?.trim();
-    const password = account.password?.trim();
-    if (username && password && baseUrl) {
-      const loginResult = await loginWithPassword({ baseUrl, username, password });
+  const ensureAuth = async (forceRefresh = false): Promise<void> => {
+    if (!forceRefresh && authToken && userId) {
+      return;
+    }
+    if (username && password) {
+      const loginResult = await loginWithPassword({
+        baseUrl,
+        username,
+        password,
+        forceRefresh,
+      });
       authToken = loginResult.authToken;
       userId = loginResult.userId;
-    } else {
+      return;
+    }
+    if (!authToken || !userId) {
       throw new Error(
         `Rocket.Chat auth missing for account "${account.accountId}". Set authToken+userId or username+password.`,
       );
     }
-  }
+  };
 
-  const target = parseRocketChatTarget(to);
-  const roomId = await resolveTargetRoomId({
-    target,
-    baseUrl,
-    authToken,
-    userId,
-  });
+  await ensureAuth();
 
-  const client = createRocketChatClient({ baseUrl, authToken, userId });
-  let message = text?.trim() ?? "";
-  let uploadError: Error | undefined;
-  const mediaUrl = opts.mediaUrl?.trim();
+  const sendOnce = async (): Promise<RocketChatSendResult> => {
+    if (!authToken || !userId) {
+      throw new Error("Rocket.Chat auth missing after login");
+    }
+    const target = parseRocketChatTarget(to);
+    const roomId = await resolveTargetRoomId({
+      target,
+      baseUrl,
+      authToken,
+      userId,
+    });
 
-  if (mediaUrl) {
-    try {
-      const configuredMaxMb =
-        account.config.mediaMaxMb ??
-        cfg.channels?.rocketchat?.mediaMaxMb;
-      const maxBytes = configuredMaxMb && configuredMaxMb > 0
-        ? configuredMaxMb * 1024 * 1024
-        : undefined;
-      
-      const media = await loadWebMedia(mediaUrl, buildOutboundMediaLoadOptions({
-        mediaAccess: opts.mediaAccess,
-        mediaLocalRoots: opts.mediaLocalRoots,
-        mediaReadFile: opts.mediaReadFile,
-        maxBytes,
-      }));
-      const result = await uploadFile(client, {
-        roomId,
-        buffer: media.buffer,
-        fileName: media.fileName ?? "upload",
-        contentType: media.contentType ?? undefined,
-        description: message || undefined,
-        tmid: opts.replyToId,
-      });
+    const client = createRocketChatClient({ baseUrl, authToken, userId });
+    let message = text?.trim() ?? "";
+    let uploadError: Error | undefined;
+    const mediaUrl = opts.mediaUrl?.trim();
 
-      core.channel.activity.record({
+    if (mediaUrl) {
+      try {
+        const configuredMaxMb =
+          account.config.mediaMaxMb ??
+          cfg.channels?.rocketchat?.mediaMaxMb;
+        const maxBytes = configuredMaxMb && configuredMaxMb > 0
+          ? configuredMaxMb * 1024 * 1024
+          : undefined;
+
+        const media = await loadWebMedia(mediaUrl, buildOutboundMediaLoadOptions({
+          mediaAccess: opts.mediaAccess,
+          mediaLocalRoots: opts.mediaLocalRoots,
+          mediaReadFile: opts.mediaReadFile,
+          maxBytes,
+        }));
+        const result = await uploadFile(client, {
+          roomId,
+          buffer: media.buffer,
+          fileName: media.fileName ?? "upload",
+          contentType: media.contentType ?? undefined,
+          description: message || undefined,
+          tmid: opts.replyToId,
+        });
+
+        core.channel.activity.record({
+          channel: "rocketchat",
+          accountId: account.accountId,
+          direction: "outbound",
+        });
+
+        return {
+          messageId: result._id ?? "unknown",
+          roomId,
+        };
+      } catch (err) {
+        uploadError = err instanceof Error ? err : new Error(String(err));
+        if (core.logging.shouldLogVerbose()) {
+          logger.debug?.(
+            `rocketchat send: media upload failed, falling back to URL text: ${String(err)}`,
+          );
+        }
+        if (isHttpUrl(mediaUrl)) {
+          message = [message, mediaUrl].filter(Boolean).join("\n");
+        }
+      }
+    }
+
+    if (message) {
+      const tableMode = core.channel.text.resolveMarkdownTableMode({
+        cfg,
         channel: "rocketchat",
         accountId: account.accountId,
-        direction: "outbound",
       });
-
-      return {
-        messageId: result._id ?? "unknown",
-        roomId,
-      };
-    } catch (err) {
-      uploadError = err instanceof Error ? err : new Error(String(err));
-      if (core.logging.shouldLogVerbose()) {
-        logger.debug?.(
-          `rocketchat send: media upload failed, falling back to URL text: ${String(err)}`,
-        );
-      }
-      if (isHttpUrl(mediaUrl)) {
-        message = [message, mediaUrl].filter(Boolean).join("\n");
-      }
+      message = core.channel.text.convertMarkdownTables(message, tableMode);
     }
-  }
 
-  if (message) {
-    const tableMode = core.channel.text.resolveMarkdownTableMode({
-      cfg,
+    if (!message) {
+      if (uploadError) {
+        throw new Error(`Rocket.Chat media upload failed: ${uploadError.message}`);
+      }
+      throw new Error("Rocket.Chat message is empty");
+    }
+
+    const result = await sendMessage(client, {
+      roomId,
+      text: message,
+      tmid: opts.replyToId,
+    });
+
+    core.channel.activity.record({
       channel: "rocketchat",
       accountId: account.accountId,
+      direction: "outbound",
     });
-    message = core.channel.text.convertMarkdownTables(message, tableMode);
-  }
 
-  if (!message) {
-    if (uploadError) {
-      throw new Error(`Rocket.Chat media upload failed: ${uploadError.message}`);
-    }
-    throw new Error("Rocket.Chat message is empty");
-  }
-
-  const result = await sendMessage(client, {
-    roomId,
-    text: message,
-    tmid: opts.replyToId,
-  });
-
-  core.channel.activity.record({
-    channel: "rocketchat",
-    accountId: account.accountId,
-    direction: "outbound",
-  });
-
-  return {
-    messageId: result._id ?? "unknown",
-    roomId,
+    return {
+      messageId: result._id ?? "unknown",
+      roomId,
+    };
   };
+
+  try {
+    return await sendOnce();
+  } catch (error) {
+    if (!canRelogin || !isRocketChatAuthError(error)) {
+      throw error;
+    }
+    logger.info?.("rocketchat send: auth expired, refreshing login session and retrying once");
+    await ensureAuth(true);
+    return await sendOnce();
+  }
 }

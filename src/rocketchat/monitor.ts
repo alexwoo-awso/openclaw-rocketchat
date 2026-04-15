@@ -282,9 +282,14 @@ export async function monitorRocketChatProvider(opts: MonitorRocketChatOpts = {}
   const canRelogin = Boolean(username && password);
 
   let reloginNeeded = false;
-  const relogin = async (): Promise<void> => {
+  const relogin = async (forceRefresh = false): Promise<void> => {
     if (!canRelogin || !username || !password) return;
-    const loginResult = await loginWithPassword({ baseUrl, username, password });
+    const loginResult = await loginWithPassword({
+      baseUrl,
+      username,
+      password,
+      forceRefresh,
+    });
     authToken = loginResult.authToken;
     userId = loginResult.userId;
   };
@@ -952,7 +957,7 @@ export async function monitorRocketChatProvider(opts: MonitorRocketChatOpts = {}
 
   const connectOnce = async (): Promise<void> => {
     if (reloginNeeded) {
-      await relogin();
+      await relogin(true);
       client = requireClientAuth({ baseUrl, authToken, userId });
       reloginNeeded = false;
     }

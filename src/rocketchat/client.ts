@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { normalizeRocketChatBaseUrl } from "./base-url.js";
 
 export type RocketChatClient = {
@@ -59,6 +61,49 @@ function buildApiUrl(baseUrl: string, path: string): string {
   }
   const suffix = path.startsWith("/") ? path : `/${path}`;
   return `${normalized}/api/v1${suffix}`;
+}
+
+type RocketChatLoginSession = {
+  authToken: string;
+  userId: string;
+};
+
+type RocketChatLoginCacheEntry = {
+  session?: RocketChatLoginSession;
+  inFlight?: Promise<RocketChatLoginSession>;
+};
+
+const rocketChatLoginCache = new Map<string, RocketChatLoginCacheEntry>();
+const MAX_LOGIN_RATE_LIMIT_RETRIES = 2;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function loginCacheKey(baseUrl: string, username: string, password: string): string {
+  const passwordHash = createHash("sha256").update(password).digest("hex").slice(0, 16);
+  return `${baseUrl}::${username}::sha256:${passwordHash}`;
+}
+
+function parseRetryAfterMs(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number.parseInt(value, 10);
+  if (Number.isFinite(seconds)) {
+    return Math.max(0, seconds * 1000);
+  }
+  const when = Date.parse(value);
+  if (Number.isFinite(when)) {
+    return Math.max(0, when - Date.now());
+  }
+  return undefined;
+}
+
+function parseRateLimitDelayMs(detail: string): number | undefined {
+  const match = detail.match(/wait\s+(\d+)\s+seconds?/i);
+  if (!match) return undefined;
+  const seconds = Number.parseInt(match[1] ?? "", 10);
+  if (!Number.isFinite(seconds)) return undefined;
+  return Math.max(0, seconds * 1000);
 }
 
 async function readRocketChatError(res: Response): Promise<string> {
@@ -339,30 +384,69 @@ export async function loginWithPassword(params: {
   username: string;
   password: string;
   fetchImpl?: typeof fetch;
+  forceRefresh?: boolean;
 }): Promise<{ authToken: string; userId: string }> {
   const baseUrl = normalizeRocketChatBaseUrl(params.baseUrl);
   if (!baseUrl) {
     throw new Error("Rocket.Chat baseUrl is required for login");
   }
   const fetchImpl = params.fetchImpl ?? fetch;
-  const url = `${baseUrl}/api/v1/login`;
-  const res = await fetchImpl(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user: params.username, password: params.password }),
-  });
-  if (!res.ok) {
-    const detail = await readRocketChatError(res);
-    throw new Error(`Rocket.Chat login failed (${res.status}): ${detail}`);
+  const key = loginCacheKey(baseUrl, params.username, params.password);
+  const entry = rocketChatLoginCache.get(key) ?? {};
+  if (params.forceRefresh) {
+    delete entry.session;
   }
-  const data = (await res.json()) as {
-    status?: string;
-    data?: { authToken?: string; userId?: string };
-  };
-  const authToken = data.data?.authToken;
-  const userId = data.data?.userId;
-  if (!authToken || !userId) {
-    throw new Error("Rocket.Chat login succeeded but no token/userId returned");
+  if (entry.session) {
+    rocketChatLoginCache.set(key, entry);
+    return entry.session;
   }
-  return { authToken, userId };
+  if (entry.inFlight) {
+    rocketChatLoginCache.set(key, entry);
+    return entry.inFlight;
+  }
+
+  const loginPromise = (async (): Promise<RocketChatLoginSession> => {
+    const url = `${baseUrl}/api/v1/login`;
+    for (let attempt = 0; ; attempt += 1) {
+      const res = await fetchImpl(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user: params.username, password: params.password }),
+      });
+      if (!res.ok) {
+        const detail = await readRocketChatError(res);
+        if (res.status === 429 && attempt < MAX_LOGIN_RATE_LIMIT_RETRIES) {
+          const retryAfterMs =
+            parseRetryAfterMs(res.headers.get("retry-after")) ?? parseRateLimitDelayMs(detail);
+          if (retryAfterMs !== undefined) {
+            await sleep(retryAfterMs);
+            continue;
+          }
+        }
+        throw new Error(`Rocket.Chat login failed (${res.status}): ${detail}`);
+      }
+      const data = (await res.json()) as {
+        status?: string;
+        data?: { authToken?: string; userId?: string };
+      };
+      const authToken = data.data?.authToken;
+      const userId = data.data?.userId;
+      if (!authToken || !userId) {
+        throw new Error("Rocket.Chat login succeeded but no token/userId returned");
+      }
+      return { authToken, userId };
+    }
+  })();
+
+  entry.inFlight = loginPromise;
+  rocketChatLoginCache.set(key, entry);
+
+  try {
+    const session = await loginPromise;
+    entry.session = session;
+    return session;
+  } finally {
+    delete entry.inFlight;
+    rocketChatLoginCache.set(key, entry);
+  }
 }
