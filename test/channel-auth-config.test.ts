@@ -112,3 +112,97 @@ test("loginWithPassword and probeRocketChat support username/password auth flow"
     globalThis.fetch = originalFetch;
   }
 });
+
+test("loginWithPassword retries once when Rocket.Chat returns 429 with a wait window", async () => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = (async (input: URL | string) => {
+    const url = String(input);
+    if (url !== "https://chat-rate-limit.example.com/api/v1/login") {
+      throw new Error(`Unexpected fetch: ${url}`);
+    }
+    attempts += 1;
+    if (attempts === 1) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "Error, too many requests. Please slow down. You must wait 0 seconds before trying this endpoint again. [error-too-many-requests]",
+        }),
+        {
+          status: 429,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    }
+    return new Response(
+      JSON.stringify({
+        status: "success",
+        data: { authToken: "token-429", userId: "user-429" },
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      },
+    );
+  }) as typeof fetch;
+
+  try {
+    const login = await loginWithPassword({
+      baseUrl: "https://chat-rate-limit.example.com",
+      username: "bot-rate-limit",
+      password: "secret",
+    });
+    assert.deepEqual(login, { authToken: "token-429", userId: "user-429" });
+    assert.equal(attempts, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("loginWithPassword reuses cached sessions until forced refresh", async () => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = (async (input: URL | string) => {
+    const url = String(input);
+    if (url !== "https://chat-cache.example.com/api/v1/login") {
+      throw new Error(`Unexpected fetch: ${url}`);
+    }
+    attempts += 1;
+    return new Response(
+      JSON.stringify({
+        status: "success",
+        data: { authToken: `token-${attempts}`, userId: `user-${attempts}` },
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      },
+    );
+  }) as typeof fetch;
+
+  try {
+    const first = await loginWithPassword({
+      baseUrl: "https://chat-cache.example.com",
+      username: "bot-cache",
+      password: "secret",
+    });
+    const second = await loginWithPassword({
+      baseUrl: "https://chat-cache.example.com",
+      username: "bot-cache",
+      password: "secret",
+    });
+    const refreshed = await loginWithPassword({
+      baseUrl: "https://chat-cache.example.com",
+      username: "bot-cache",
+      password: "secret",
+      forceRefresh: true,
+    });
+
+    assert.deepEqual(first, { authToken: "token-1", userId: "user-1" });
+    assert.deepEqual(second, first);
+    assert.deepEqual(refreshed, { authToken: "token-2", userId: "user-2" });
+    assert.equal(attempts, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
