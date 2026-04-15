@@ -18,3 +18,25 @@ test("manifest version matches package version", () => {
 
   assert.equal(manifest.version, packageJson.version);
 });
+
+test("manifest config schema is populated", () => {
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(pluginRoot, "openclaw.plugin.json"), "utf8"),
+  ) as {
+    configSchema?: {
+      properties?: Record<string, unknown>;
+      "$defs"?: Record<string, unknown>;
+      definitions?: Record<string, unknown>;
+    };
+  };
+
+  assert.ok(manifest.configSchema, "manifest configSchema is missing");
+  const propertyCount = Object.keys(manifest.configSchema?.properties ?? {}).length;
+  const defCount =
+    Object.keys(manifest.configSchema?.$defs ?? {}).length +
+    Object.keys(manifest.configSchema?.definitions ?? {}).length;
+  assert.ok(
+    propertyCount > 0 || defCount > 0,
+    "manifest configSchema should contain properties or definitions",
+  );
+});

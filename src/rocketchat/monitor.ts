@@ -17,7 +17,10 @@ import {
   recordPendingHistoryEntryIfEnabled,
 } from "openclaw/plugin-sdk/reply-history";
 import { resolveControlCommandGate } from "openclaw/plugin-sdk/command-auth";
-import { resolveChannelMediaMaxBytes } from "openclaw/plugin-sdk/media-runtime";
+import {
+  getAgentScopedMediaLocalRoots,
+  resolveChannelMediaMaxBytes,
+} from "openclaw/plugin-sdk/media-runtime";
 import {
   createConversationWindowTracker,
   evaluateRocketChatMentionGate,
@@ -322,11 +325,11 @@ export async function monitorRocketChatProvider(opts: MonitorRocketChatOpts = {}
   const channelHistories = new Map<string, HistoryEntry[]>();
   const conversationWindows = createConversationWindowTracker();
 
-  const fetchWithAuth = (input: URL | string, init?: RequestInit) => {
-    const headers = new Headers(init?.headers);
-    headers.set("X-Auth-Token", client.authToken);
-    headers.set("X-User-Id", client.userId);
-    return fetch(input, { ...init, headers });
+  const authRequestInit: RequestInit = {
+    headers: {
+      "X-Auth-Token": client.authToken,
+      "X-User-Id": client.userId,
+    },
   };
 
   const resolveMedia = async (msg: RocketChatMessage): Promise<RocketChatMediaInfo[]> => {
@@ -340,7 +343,7 @@ export async function monitorRocketChatProvider(opts: MonitorRocketChatOpts = {}
         const url = `${client.baseUrl}/file-upload/${file._id}/${encodeURIComponent(file.name ?? file._id)}`;
         const fetched = await core.channel.media.fetchRemoteMedia({
           url,
-          fetchImpl: fetchWithAuth,
+          requestInit: authRequestInit,
           filePathHint: file.name ?? file._id,
           maxBytes: mediaMaxBytes,
           ssrfPolicy: { allowedHostnames: [new URL(client.baseUrl).hostname] },
@@ -358,7 +361,7 @@ export async function monitorRocketChatProvider(opts: MonitorRocketChatOpts = {}
           kind: core.media.mediaKindFromMime(contentType) ?? "unknown",
         });
       } catch (err) {
-        logger.debug?.(`rocketchat: failed to download file ${file._id}: ${String(err)}`);
+        logger.info?.(`rocketchat: failed to download file ${file._id}: ${String(err)}`);
       }
     }
 
@@ -371,7 +374,7 @@ export async function monitorRocketChatProvider(opts: MonitorRocketChatOpts = {}
       try {
         const fetched = await core.channel.media.fetchRemoteMedia({
           url: fullUrl,
-          fetchImpl: fetchWithAuth,
+          requestInit: authRequestInit,
           filePathHint: att.title ?? "attachment",
           maxBytes: mediaMaxBytes,
           ssrfPolicy: { allowedHostnames: [new URL(client.baseUrl).hostname] },
@@ -867,6 +870,7 @@ export async function monitorRocketChatProvider(opts: MonitorRocketChatOpts = {}
               await sendMessageRocketChat(to, caption, {
                 accountId: account.accountId,
                 mediaUrl,
+                mediaLocalRoots: getAgentScopedMediaLocalRoots(cfg, route.agentId),
                 replyToId: threadRootId,
               });
             }

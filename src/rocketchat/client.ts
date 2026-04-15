@@ -239,9 +239,14 @@ export async function uploadFile(
       `Rocket.Chat API ${uploadRes.status} ${uploadRes.statusText}: ${detail || "unknown error"}`,
     );
   }
-  const uploadData = (await uploadRes.json()) as { file?: { _id: string; url: string }; success?: boolean };
+  const uploadData = (await uploadRes.json()) as {
+    file?: { _id: string; url: string };
+    success?: boolean;
+  };
   if (!uploadData.success || !uploadData.file?.url) {
-    throw new Error("Rocket.Chat file upload failed: no file URL returned");
+    throw new Error(
+      `Rocket.Chat file upload failed: status=${uploadRes.status}, body=${JSON.stringify(uploadData)}`,
+    );
   }
 
   // Step 2: Determine attachment type and absolute URL

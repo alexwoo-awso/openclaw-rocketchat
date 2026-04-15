@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { zodToJsonSchema } from "zod-to-json-schema";
+import { z } from "zod";
 import { RocketChatConfigSchema } from "../src/config-schema.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -14,14 +14,7 @@ const packageJsonPath = path.join(pluginRoot, "package.json");
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Record<string, any>;
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as { version: string };
 
-const jsonSchema = zodToJsonSchema(
-  RocketChatConfigSchema as unknown as Parameters<typeof zodToJsonSchema>[0],
-  {
-    name: "RocketChatConfig",
-    target: "jsonSchema7",
-    $refStrategy: "none",
-  },
-);
+const jsonSchema = z.toJSONSchema(RocketChatConfigSchema, { target: "draft-7" });
 
 manifest.version = packageJson.version;
 manifest.configSchema = jsonSchema;
