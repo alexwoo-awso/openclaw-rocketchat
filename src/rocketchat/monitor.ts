@@ -307,7 +307,9 @@ export async function monitorRocketChatProvider(opts: MonitorRocketChatOpts = {}
   let client = requireClientAuth({ baseUrl, authToken, userId });
   const botUser = await fetchMe(client);
   const botUserId = botUser._id;
+  const botDisplayName = botUser.name?.trim() || undefined;
   const botUsername = botUser.username?.trim() || undefined;
+  const botTypingIdentities = [botDisplayName, botUsername].filter(Boolean) as string[];
   let realtimeControls: RealtimeControls | null = null;
   runtime.log?.(`rocketchat connected as ${botUsername ? `@${botUsername}` : botUserId}`);
 
@@ -409,7 +411,7 @@ export async function monitorRocketChatProvider(opts: MonitorRocketChatOpts = {}
     await sendTyping(client, {
       roomId,
       typing,
-      username: botUsername,
+      identities: botTypingIdentities,
       sendRealtimeTyping: realtimeControls?.sendTyping,
     });
   };

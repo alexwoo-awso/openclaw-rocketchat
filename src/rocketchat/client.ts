@@ -225,7 +225,7 @@ export async function sendMessage(
 
 export type RocketChatTypingSender = (params: {
   roomId: string;
-  username: string;
+  identities: string[];
   typing: boolean;
 }) => Promise<void>;
 
@@ -234,15 +234,17 @@ export async function sendTyping(
   params: {
     roomId: string;
     typing: boolean;
-    username?: string;
+    identities?: string[];
     sendRealtimeTyping?: RocketChatTypingSender;
   },
 ): Promise<void> {
-  const username = params.username?.trim();
-  if (params.sendRealtimeTyping && username) {
+  const identities = Array.from(
+    new Set((params.identities ?? []).map((value) => value.trim()).filter(Boolean)),
+  );
+  if (params.sendRealtimeTyping && identities.length > 0) {
     await params.sendRealtimeTyping({
       roomId: params.roomId,
-      username,
+      identities,
       typing: params.typing,
     });
     return;

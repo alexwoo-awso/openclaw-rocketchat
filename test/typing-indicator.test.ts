@@ -6,6 +6,10 @@ import type WebSocket from "ws";
 import { createRocketChatClient, sendTyping } from "../src/rocketchat/client.js";
 import { createRealtimeConnection, type RealtimeControls } from "../src/rocketchat/realtime.js";
 
+function nextTurn(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 test("sendTyping prefers realtime typing sender over REST fallback", async () => {
   let restCalls = 0;
   const client = createRocketChatClient({
@@ -20,18 +24,20 @@ test("sendTyping prefers realtime typing sender over REST fallback", async () =>
       });
     }) as typeof fetch,
   });
-  const typingCalls: Array<{ roomId: string; username: string; typing: boolean }> = [];
+  const typingCalls: Array<{ roomId: string; identities: string[]; typing: boolean }> = [];
 
   await sendTyping(client, {
     roomId: "ROOM1",
     typing: true,
-    username: "bot-test",
+    identities: ["Bot Test", "bot-test"],
     sendRealtimeTyping: async (params) => {
       typingCalls.push(params);
     },
   });
 
-  assert.deepEqual(typingCalls, [{ roomId: "ROOM1", username: "bot-test", typing: true }]);
+  assert.deepEqual(typingCalls, [
+    { roomId: "ROOM1", identities: ["Bot Test", "bot-test"], typing: true },
+  ]);
   assert.equal(restCalls, 0);
 });
 
@@ -61,7 +67,7 @@ class FakeWebSocket extends EventEmitter {
   }
 }
 
-test("realtime controls send room typing over both Rocket.Chat room activity streams", async () => {
+test("realtime controls retry room typing with fallback identity after DDP rejection", async () => {
   FakeWebSocket.instances.length = 0;
   let controls: RealtimeControls | undefined;
   let socket: FakeWebSocket | undefined;
@@ -102,58 +108,91 @@ test("realtime controls send room typing over both Rocket.Chat room activity str
     socket.emit("message", Buffer.from(JSON.stringify({ msg: "result", result: {} })));
     assert.ok(controls);
 
-    await controls.sendTyping({
+    const startTypingPromise = controls.sendTyping({
       roomId: "ROOM1",
-      username: "bot-test",
+      identities: ["Bot Test", "bot-test"],
       typing: true,
     });
 
-    const userActivityPayload = JSON.parse(socket.sent.at(-2) ?? "{}") as {
+    const firstUserActivityPayload = JSON.parse(socket.sent.at(-1) ?? "{}") as {
       msg?: string;
+      id?: string;
       method?: string;
       params?: unknown[];
     };
-    assert.equal(userActivityPayload.msg, "method");
-    assert.equal(userActivityPayload.method, "stream-notify-room");
-    assert.deepEqual(userActivityPayload.params, [
+    assert.equal(firstUserActivityPayload.msg, "method");
+    assert.equal(firstUserActivityPayload.method, "stream-notify-room");
+    assert.deepEqual(firstUserActivityPayload.params, [
+      "ROOM1/user-activity",
+      "Bot Test",
+      ["user-typing"],
+      {},
+    ]);
+    socket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          msg: "result",
+          id: firstUserActivityPayload.id,
+          error: { message: "identity mismatch" },
+        }),
+      ),
+    );
+    await nextTurn();
+
+    const fallbackUserActivityPayload = JSON.parse(socket.sent.at(-1) ?? "{}") as {
+      msg?: string;
+      id?: string;
+      method?: string;
+      params?: unknown[];
+    };
+    assert.equal(fallbackUserActivityPayload.msg, "method");
+    assert.equal(fallbackUserActivityPayload.method, "stream-notify-room");
+    assert.deepEqual(fallbackUserActivityPayload.params, [
       "ROOM1/user-activity",
       "bot-test",
       ["user-typing"],
       {},
     ]);
+    socket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          msg: "result",
+          id: fallbackUserActivityPayload.id,
+          result: { success: true },
+        }),
+      ),
+    );
+    await startTypingPromise;
 
-    const typingPayload = JSON.parse(socket.sent.at(-1) ?? "{}") as {
-      msg?: string;
-      method?: string;
-      params?: unknown[];
-    };
-    assert.equal(typingPayload.msg, "method");
-    assert.equal(typingPayload.method, "stream-notify-room");
-    assert.deepEqual(typingPayload.params, ["ROOM1/typing", "bot-test", true]);
-
-    await controls.sendTyping({
+    const stopTypingPromise = controls.sendTyping({
       roomId: "ROOM1",
-      username: "bot-test",
+      identities: ["Bot Test", "bot-test"],
       typing: false,
     });
+    await nextTurn();
 
-    const stopUserActivityPayload = JSON.parse(socket.sent.at(-2) ?? "{}") as {
+    const stopUserActivityPayload = JSON.parse(socket.sent.at(-1) ?? "{}") as {
       msg?: string;
+      id?: string;
       method?: string;
       params?: unknown[];
     };
     assert.equal(stopUserActivityPayload.msg, "method");
     assert.equal(stopUserActivityPayload.method, "stream-notify-room");
     assert.deepEqual(stopUserActivityPayload.params, ["ROOM1/user-activity", "bot-test", [], {}]);
-
-    const stopTypingPayload = JSON.parse(socket.sent.at(-1) ?? "{}") as {
-      msg?: string;
-      method?: string;
-      params?: unknown[];
-    };
-    assert.equal(stopTypingPayload.msg, "method");
-    assert.equal(stopTypingPayload.method, "stream-notify-room");
-    assert.deepEqual(stopTypingPayload.params, ["ROOM1/typing", "bot-test", false]);
+    socket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          msg: "result",
+          id: stopUserActivityPayload.id,
+          result: { success: true },
+        }),
+      ),
+    );
+    await stopTypingPromise;
   } finally {
     socket?.close();
     await connection;

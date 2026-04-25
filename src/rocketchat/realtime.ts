@@ -23,7 +23,7 @@ export type RealtimeCallbacks = {
 };
 
 export type RealtimeControls = {
-  sendTyping: (params: { roomId: string; username: string; typing: boolean }) => Promise<void>;
+  sendTyping: (params: { roomId: string; identities: string[]; typing: boolean }) => Promise<void>;
 };
 
 let ddpIdCounter = 0;
@@ -60,6 +60,15 @@ export function createRealtimeConnection(params: {
     const ws = new WebSocketImpl(wsUrl);
     let opened = false;
     let authenticated = false;
+    let preferredTypingIdentity: string | null = null;
+    const pendingMethods = new Map<
+      string,
+      {
+        resolve: (value: unknown) => void;
+        reject: (error: Error) => void;
+        timer: ReturnType<typeof setTimeout>;
+      }
+    >();
 
     // --- Watchdog: detect stale connections (VM suspend/resume, network drop) ---
     let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
@@ -85,6 +94,11 @@ export function createRealtimeConnection(params: {
     abortSignal?.addEventListener("abort", onAbort, { once: true });
 
     const cleanup = () => {
+      for (const [id, pending] of pendingMethods) {
+        clearTimeout(pending.timer);
+        pending.reject(new Error(`Rocket.Chat DDP method ${id} was interrupted`));
+        pendingMethods.delete(id);
+      }
       clearWatchdog();
       abortSignal?.removeEventListener("abort", onAbort);
     };
@@ -96,39 +110,73 @@ export function createRealtimeConnection(params: {
       }
     };
 
+    const callMethod = async (
+      method: string,
+      params: unknown[],
+      timeoutMs = 5_000,
+    ): Promise<unknown> => {
+      if (ws.readyState !== WebSocket.OPEN || !authenticated) {
+        throw new Error("Rocket.Chat DDP connection is not ready for method calls");
+      }
+      const id = nextDdpId();
+      const result = new Promise<unknown>((resolveResult, rejectResult) => {
+        const timer = setTimeout(() => {
+          pendingMethods.delete(id);
+          rejectResult(new Error(`Rocket.Chat DDP method timed out: ${method}`));
+        }, timeoutMs);
+        pendingMethods.set(id, {
+          resolve: resolveResult,
+          reject: rejectResult,
+          timer,
+        });
+      });
+      ddpSend({
+        msg: "method",
+        method,
+        id,
+        params,
+      });
+      return await result;
+    };
+
     const controls: RealtimeControls = {
-      sendTyping: async ({ roomId, username, typing }) => {
+      sendTyping: async ({ roomId, identities, typing }) => {
         const normalizedRoomId = roomId.trim();
-        const normalizedUsername = username.trim();
+        const normalizedIdentities = Array.from(
+          new Set(identities.map((identity) => identity.trim()).filter(Boolean)),
+        );
         if (!normalizedRoomId) {
           throw new Error("Rocket.Chat typing event requires a roomId");
         }
-        if (!normalizedUsername) {
-          throw new Error("Rocket.Chat typing event requires a username");
+        if (normalizedIdentities.length === 0) {
+          throw new Error("Rocket.Chat typing event requires at least one identity");
         }
         if (ws.readyState !== WebSocket.OPEN || !authenticated) {
           throw new Error("Rocket.Chat DDP connection is not ready for typing events");
         }
 
-        // Rocket.Chat 8.3.x room UI consumes user-activity/user-typing, while
-        // older clients may still rely on the legacy typing boolean stream.
-        ddpSend({
-          msg: "method",
-          method: "stream-notify-room",
-          id: nextDdpId(),
-          params: [
-            `${normalizedRoomId}/user-activity`,
-            normalizedUsername,
-            typing ? ["user-typing"] : [],
-            {},
-          ],
-        });
-        ddpSend({
-          msg: "method",
-          method: "stream-notify-room",
-          id: nextDdpId(),
-          params: [`${normalizedRoomId}/typing`, normalizedUsername, typing],
-        });
+        const candidateIdentities = [
+          ...(preferredTypingIdentity ? [preferredTypingIdentity] : []),
+          ...normalizedIdentities,
+        ].filter((value, index, array) => array.indexOf(value) === index);
+
+        let lastError: Error | null = null;
+        for (const identity of candidateIdentities) {
+          try {
+            await callMethod("stream-notify-room", [
+              `${normalizedRoomId}/user-activity`,
+              identity,
+              typing ? ["user-typing"] : [],
+              {},
+            ]);
+            preferredTypingIdentity = identity;
+            return;
+          } catch (err) {
+            lastError = err instanceof Error ? err : new Error(String(err));
+          }
+        }
+
+        throw lastError ?? new Error("Rocket.Chat typing event failed for all identities");
       },
     };
 
@@ -173,6 +221,22 @@ export function createRealtimeConnection(params: {
       }
 
       // Step 3: On login result, subscribe to messages
+      if (data.msg === "result" && data.id && pendingMethods.has(data.id)) {
+        const pending = pendingMethods.get(data.id);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        pendingMethods.delete(data.id);
+        if (data.error) {
+          const errMsg = typeof data.error === "object"
+            ? (data.error as { message?: string }).message ?? JSON.stringify(data.error)
+            : String(data.error);
+          pending.reject(new Error(`Rocket.Chat DDP method failed: ${errMsg}`));
+          return;
+        }
+        pending.resolve(data.result);
+        return;
+      }
+
       if (data.msg === "result" && !authenticated) {
         if (data.error) {
           const errMsg = typeof data.error === "object"
