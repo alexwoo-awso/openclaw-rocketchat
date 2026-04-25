@@ -23,7 +23,7 @@ import { normalizeRocketChatBaseUrl } from "./rocketchat/base-url.js";
 import { rocketchatSetupWizard } from "./onboarding.js";
 import { looksLikeRocketChatTargetId, normalizeRocketChatMessagingTarget } from "./normalize.js";
 import { getRocketChatRuntime } from "./runtime.js";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { ChannelMessageActionAdapter } from "openclaw/plugin-sdk/channel-contract";
 
 const meta = {

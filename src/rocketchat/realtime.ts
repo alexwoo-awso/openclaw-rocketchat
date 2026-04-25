@@ -16,9 +16,14 @@ export type DDPMessage = {
 
 export type RealtimeCallbacks = {
   onMessage: (roomId: string, message: RocketChatMessage) => void;
+  onReady?: (controls: RealtimeControls) => void;
   onConnected?: () => void;
   onDisconnected?: (code: number, reason: string) => void;
   onError?: (err: Error) => void;
+};
+
+export type RealtimeControls = {
+  sendTyping: (params: { roomId: string; username: string; typing: boolean }) => Promise<void>;
 };
 
 let ddpIdCounter = 0;
@@ -41,16 +46,18 @@ export function createRealtimeConnection(params: {
   abortSignal?: AbortSignal;
   /** Max silence before force-terminating (ms). Default 120 000. */
   watchdogTimeoutMs?: number;
+  webSocketImpl?: typeof WebSocket;
 }): Promise<void> {
   const { baseUrl, authToken, callbacks, abortSignal } = params;
   const watchdogTimeout = params.watchdogTimeoutMs ?? 120_000;
+  const WebSocketImpl = params.webSocketImpl ?? WebSocket;
 
   // Build WebSocket URL
   const wsBase = baseUrl.replace(/^http/i, "ws").replace(/\/+$/, "");
   const wsUrl = `${wsBase}/websocket`;
 
   return new Promise<void>((resolve, reject) => {
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocketImpl(wsUrl);
     let opened = false;
     let authenticated = false;
 
@@ -87,6 +94,28 @@ export function createRealtimeConnection(params: {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(msg));
       }
+    };
+
+    const controls: RealtimeControls = {
+      sendTyping: async ({ roomId, username, typing }) => {
+        const normalizedRoomId = roomId.trim();
+        const normalizedUsername = username.trim();
+        if (!normalizedRoomId) {
+          throw new Error("Rocket.Chat typing event requires a roomId");
+        }
+        if (!normalizedUsername) {
+          throw new Error("Rocket.Chat typing event requires a username");
+        }
+        if (ws.readyState !== WebSocket.OPEN || !authenticated) {
+          throw new Error("Rocket.Chat DDP connection is not ready for typing events");
+        }
+        ddpSend({
+          msg: "method",
+          method: "stream-notify-room",
+          id: nextDdpId(),
+          params: [`${normalizedRoomId}/typing`, normalizedUsername, typing],
+        });
+      },
     };
 
     ws.on("open", () => {
@@ -140,6 +169,7 @@ export function createRealtimeConnection(params: {
           return;
         }
         authenticated = true;
+        callbacks.onReady?.(controls);
         callbacks.onConnected?.();
 
         // Subscribe to all messages for the authenticated user

@@ -42,7 +42,7 @@ import {
   type RocketChatUser,
 } from "./client.js";
 import { normalizeRocketChatBaseUrl } from "./base-url.js";
-import { createRealtimeConnection } from "./realtime.js";
+import { createRealtimeConnection, type RealtimeControls } from "./realtime.js";
 import { runWithReconnect } from "./reconnect.js";
 import { sendMessageRocketChat } from "./send.js";
 
@@ -308,6 +308,7 @@ export async function monitorRocketChatProvider(opts: MonitorRocketChatOpts = {}
   const botUser = await fetchMe(client);
   const botUserId = botUser._id;
   const botUsername = botUser.username?.trim() || undefined;
+  let realtimeControls: RealtimeControls | null = null;
   runtime.log?.(`rocketchat connected as ${botUsername ? `@${botUsername}` : botUserId}`);
 
   const roomCache = new Map<string, { value: RocketChatRoom | null; expiresAt: number }>();
@@ -404,8 +405,13 @@ export async function monitorRocketChatProvider(opts: MonitorRocketChatOpts = {}
     return out;
   };
 
-  const sendTypingIndicator = async (roomId: string) => {
-    await sendTyping(client, { roomId, typing: true });
+  const sendTypingIndicator = async (roomId: string, typing: boolean) => {
+    await sendTyping(client, {
+      roomId,
+      typing,
+      username: botUsername,
+      sendRealtimeTyping: realtimeControls?.sendTyping,
+    });
   };
 
   const resolveRoomInfo = async (roomId: string): Promise<RocketChatRoom | null> => {
@@ -836,8 +842,17 @@ export async function monitorRocketChatProvider(opts: MonitorRocketChatOpts = {}
     });
 
     const typingCallbacks = createTypingCallbacks({
-      start: () => sendTypingIndicator(roomId),
+      start: () => sendTypingIndicator(roomId, true),
+      stop: () => sendTypingIndicator(roomId, false),
       onStartError: (err) => {
+        logTypingFailure({
+          log: (message) => logger.debug?.(message),
+          channel: "rocketchat",
+          target: roomId,
+          error: err,
+        });
+      },
+      onStopError: (err) => {
         logTypingFailure({
           log: (message) => logger.debug?.(message),
           channel: "rocketchat",
@@ -966,6 +981,9 @@ export async function monitorRocketChatProvider(opts: MonitorRocketChatOpts = {}
       authToken: client.authToken,
       abortSignal: opts.abortSignal,
       callbacks: {
+        onReady: (controls) => {
+          realtimeControls = controls;
+        },
         onMessage: (roomId, message) => {
           debouncer.enqueue({ roomId, msg: message }).catch((err) => {
             runtime.error?.(`rocketchat handler failed: ${String(err)}`);
@@ -979,6 +997,7 @@ export async function monitorRocketChatProvider(opts: MonitorRocketChatOpts = {}
           });
         },
         onDisconnected: (code, reason) => {
+          realtimeControls = null;
           opts.statusSink?.({
             connected: false,
             lastDisconnect: {
@@ -989,6 +1008,7 @@ export async function monitorRocketChatProvider(opts: MonitorRocketChatOpts = {}
           });
         },
         onError: (err) => {
+          realtimeControls = null;
           runtime.error?.(`rocketchat websocket error: ${String(err)}`);
           opts.statusSink?.({ lastError: String(err) });
         },

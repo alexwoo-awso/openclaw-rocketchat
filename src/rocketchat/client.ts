@@ -223,10 +223,31 @@ export async function sendMessage(
   return data.message;
 }
 
+export type RocketChatTypingSender = (params: {
+  roomId: string;
+  username: string;
+  typing: boolean;
+}) => Promise<void>;
+
 export async function sendTyping(
   client: RocketChatClient,
-  params: { roomId: string; typing: boolean },
+  params: {
+    roomId: string;
+    typing: boolean;
+    username?: string;
+    sendRealtimeTyping?: RocketChatTypingSender;
+  },
 ): Promise<void> {
+  const username = params.username?.trim();
+  if (params.sendRealtimeTyping && username) {
+    await params.sendRealtimeTyping({
+      roomId: params.roomId,
+      username,
+      typing: params.typing,
+    });
+    return;
+  }
+
   // Rocket.Chat typing is typically done via realtime/DDP, but there's no REST endpoint.
   // We'll use the REST method if available, otherwise this is a no-op.
   // In practice, typing indicators are sent via the DDP WebSocket.
