@@ -903,18 +903,24 @@ export async function monitorRocketChatProvider(opts: MonitorRocketChatOpts = {}
         onReplyStart: typingCallbacks.onReplyStart,
       });
 
-    await core.channel.reply.dispatchReplyFromConfig({
-      ctx: ctxPayload,
-      cfg,
-      dispatcher,
-      replyOptions: {
-        ...replyOptions,
-        disableBlockStreaming:
-          typeof account.blockStreaming === "boolean" ? !account.blockStreaming : undefined,
-        onModelSelected,
-      },
-    });
-    markDispatchIdle();
+    try {
+      await core.channel.reply.dispatchReplyFromConfig({
+        ctx: ctxPayload,
+        cfg,
+        dispatcher,
+        replyOptions: {
+          ...replyOptions,
+          disableBlockStreaming:
+            typeof account.blockStreaming === "boolean" ? !account.blockStreaming : undefined,
+          onModelSelected,
+        },
+      });
+    } finally {
+      // Keep the Rocket.Chat indicator from lingering if the upstream typing
+      // controller never transitions to idle cleanup for this run.
+      typingCallbacks.onCleanup?.();
+      markDispatchIdle();
+    }
     if (historyKey) {
       clearHistoryEntriesIfEnabled({
         historyMap: channelHistories,

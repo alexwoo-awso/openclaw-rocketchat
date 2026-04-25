@@ -109,6 +109,20 @@ export function createRealtimeConnection(params: {
         if (ws.readyState !== WebSocket.OPEN || !authenticated) {
           throw new Error("Rocket.Chat DDP connection is not ready for typing events");
         }
+
+        // Rocket.Chat 8.3.x room UI consumes user-activity/user-typing, while
+        // older clients may still rely on the legacy typing boolean stream.
+        ddpSend({
+          msg: "method",
+          method: "stream-notify-room",
+          id: nextDdpId(),
+          params: [
+            `${normalizedRoomId}/user-activity`,
+            normalizedUsername,
+            typing ? ["user-typing"] : [],
+            {},
+          ],
+        });
         ddpSend({
           msg: "method",
           method: "stream-notify-room",
