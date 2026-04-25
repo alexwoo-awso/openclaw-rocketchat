@@ -61,7 +61,7 @@ class FakeWebSocket extends EventEmitter {
   }
 }
 
-test("realtime controls send room typing over DDP", async () => {
+test("realtime controls send room typing over both Rocket.Chat room activity streams", async () => {
   FakeWebSocket.instances.length = 0;
   let controls: RealtimeControls | undefined;
   let socket: FakeWebSocket | undefined;
@@ -108,6 +108,20 @@ test("realtime controls send room typing over DDP", async () => {
       typing: true,
     });
 
+    const userActivityPayload = JSON.parse(socket.sent.at(-2) ?? "{}") as {
+      msg?: string;
+      method?: string;
+      params?: unknown[];
+    };
+    assert.equal(userActivityPayload.msg, "method");
+    assert.equal(userActivityPayload.method, "stream-notify-room");
+    assert.deepEqual(userActivityPayload.params, [
+      "ROOM1/user-activity",
+      "bot-test",
+      ["user-typing"],
+      {},
+    ]);
+
     const typingPayload = JSON.parse(socket.sent.at(-1) ?? "{}") as {
       msg?: string;
       method?: string;
@@ -116,6 +130,30 @@ test("realtime controls send room typing over DDP", async () => {
     assert.equal(typingPayload.msg, "method");
     assert.equal(typingPayload.method, "stream-notify-room");
     assert.deepEqual(typingPayload.params, ["ROOM1/typing", "bot-test", true]);
+
+    await controls.sendTyping({
+      roomId: "ROOM1",
+      username: "bot-test",
+      typing: false,
+    });
+
+    const stopUserActivityPayload = JSON.parse(socket.sent.at(-2) ?? "{}") as {
+      msg?: string;
+      method?: string;
+      params?: unknown[];
+    };
+    assert.equal(stopUserActivityPayload.msg, "method");
+    assert.equal(stopUserActivityPayload.method, "stream-notify-room");
+    assert.deepEqual(stopUserActivityPayload.params, ["ROOM1/user-activity", "bot-test", [], {}]);
+
+    const stopTypingPayload = JSON.parse(socket.sent.at(-1) ?? "{}") as {
+      msg?: string;
+      method?: string;
+      params?: unknown[];
+    };
+    assert.equal(stopTypingPayload.msg, "method");
+    assert.equal(stopTypingPayload.method, "stream-notify-room");
+    assert.deepEqual(stopTypingPayload.params, ["ROOM1/typing", "bot-test", false]);
   } finally {
     socket?.close();
     await connection;
