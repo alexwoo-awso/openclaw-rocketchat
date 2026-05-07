@@ -18,6 +18,13 @@ const jsonSchema = z.toJSONSchema(RocketChatConfigSchema, { target: "draft-7" })
 
 manifest.version = packageJson.version;
 manifest.configSchema = jsonSchema;
+manifest.channelConfigs = {
+  rocketchat: {
+    label: "Rocket.Chat",
+    description: "Rocket.Chat channel plugin",
+    schema: jsonSchema,
+  },
+};
 
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
 console.log(`[rocketchat] synced manifest version and configSchema to ${manifestPath}`);

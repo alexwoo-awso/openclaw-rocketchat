@@ -1,17 +1,11 @@
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
-import { emptyPluginConfigSchema } from "openclaw/plugin-sdk/core";
+import { defineChannelPluginEntry } from "openclaw/plugin-sdk/core";
 import { rocketchatPlugin } from "./src/channel.js";
 import { setRocketChatRuntime } from "./src/runtime.js";
 
-const plugin = {
+export default defineChannelPluginEntry({
   id: "rocketchat",
   name: "Rocket.Chat",
   description: "Rocket.Chat channel plugin",
-  configSchema: emptyPluginConfigSchema(),
-  register(api: OpenClawPluginApi) {
-    setRocketChatRuntime(api.runtime);
-    api.registerChannel({ plugin: rocketchatPlugin });
-  },
-};
-
-export default plugin;
+  plugin: rocketchatPlugin,
+  setRuntime: setRocketChatRuntime,
+});
