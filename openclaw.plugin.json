@@ -362,5 +362,368 @@
       "groupPolicy"
     ],
     "additionalProperties": false
+  },
+  "channelConfigs": {
+    "rocketchat": {
+      "label": "Rocket.Chat",
+      "description": "Rocket.Chat channel plugin",
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "markdown": {
+            "type": "object",
+            "properties": {
+              "tables": {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "bullets",
+                  "code",
+                  "block"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "configWrites": {
+            "type": "boolean"
+          },
+          "authToken": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "baseUrl": {
+            "type": "string"
+          },
+          "chatmode": {
+            "type": "string",
+            "enum": [
+              "oncall",
+              "onmessage",
+              "onchar"
+            ]
+          },
+          "oncharPrefixes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requireMention": {
+            "type": "boolean"
+          },
+          "conversationWindowMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "mediaMaxMb": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "dmPolicy": {
+            "default": "pairing",
+            "type": "string",
+            "enum": [
+              "pairing",
+              "allowlist",
+              "open",
+              "disabled"
+            ]
+          },
+          "allowFrom": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          },
+          "groupAllowFrom": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          },
+          "groupPolicy": {
+            "default": "allowlist",
+            "type": "string",
+            "enum": [
+              "open",
+              "disabled",
+              "allowlist"
+            ]
+          },
+          "textChunkLimit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "chunkMode": {
+            "type": "string",
+            "enum": [
+              "length",
+              "newline"
+            ]
+          },
+          "blockStreaming": {
+            "type": "boolean"
+          },
+          "blockStreamingCoalesce": {
+            "type": "object",
+            "properties": {
+              "minChars": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "idleMs": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false
+          },
+          "responsePrefix": {
+            "type": "string"
+          },
+          "rooms": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "conversationWindowMinutes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "mediaMaxMb": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "accounts": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "capabilities": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "markdown": {
+                  "type": "object",
+                  "properties": {
+                    "tables": {
+                      "type": "string",
+                      "enum": [
+                        "off",
+                        "bullets",
+                        "code",
+                        "block"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "configWrites": {
+                  "type": "boolean"
+                },
+                "authToken": {
+                  "type": "string"
+                },
+                "userId": {
+                  "type": "string"
+                },
+                "baseUrl": {
+                  "type": "string"
+                },
+                "chatmode": {
+                  "type": "string",
+                  "enum": [
+                    "oncall",
+                    "onmessage",
+                    "onchar"
+                  ]
+                },
+                "oncharPrefixes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "requireMention": {
+                  "type": "boolean"
+                },
+                "conversationWindowMinutes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "mediaMaxMb": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "dmPolicy": {
+                  "default": "pairing",
+                  "type": "string",
+                  "enum": [
+                    "pairing",
+                    "allowlist",
+                    "open",
+                    "disabled"
+                  ]
+                },
+                "allowFrom": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  }
+                },
+                "groupAllowFrom": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  }
+                },
+                "groupPolicy": {
+                  "default": "allowlist",
+                  "type": "string",
+                  "enum": [
+                    "open",
+                    "disabled",
+                    "allowlist"
+                  ]
+                },
+                "textChunkLimit": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "chunkMode": {
+                  "type": "string",
+                  "enum": [
+                    "length",
+                    "newline"
+                  ]
+                },
+                "blockStreaming": {
+                  "type": "boolean"
+                },
+                "blockStreamingCoalesce": {
+                  "type": "object",
+                  "properties": {
+                    "minChars": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "idleMs": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "responsePrefix": {
+                  "type": "string"
+                },
+                "rooms": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "conversationWindowMinutes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "mediaMaxMb": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "dmPolicy",
+                "groupPolicy"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "dmPolicy",
+          "groupPolicy"
+        ],
+        "additionalProperties": false
+      }
+    }
   }
 }
