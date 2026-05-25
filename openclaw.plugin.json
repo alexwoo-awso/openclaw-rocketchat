@@ -46,6 +46,12 @@
       "userId": {
         "type": "string"
       },
+      "username": {
+        "type": "string"
+      },
+      "password": {
+        "type": "string"
+      },
       "baseUrl": {
         "type": "string"
       },
@@ -217,6 +223,12 @@
               "type": "string"
             },
             "userId": {
+              "type": "string"
+            },
+            "username": {
+              "type": "string"
+            },
+            "password": {
               "type": "string"
             },
             "baseUrl": {
@@ -407,6 +419,12 @@
           "userId": {
             "type": "string"
           },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
           "baseUrl": {
             "type": "string"
           },
@@ -578,6 +596,12 @@
                   "type": "string"
                 },
                 "userId": {
+                  "type": "string"
+                },
+                "username": {
+                  "type": "string"
+                },
+                "password": {
                   "type": "string"
                 },
                 "baseUrl": {

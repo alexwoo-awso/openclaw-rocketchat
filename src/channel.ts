@@ -144,9 +144,14 @@ export const rocketchatPlugin: ChannelPlugin<ResolvedRocketChatAccount> = {
     hasConfiguredState: ({ cfg, env }) => {
       const envToken = env?.ROCKETCHAT_AUTH_TOKEN?.trim();
       const envUserId = env?.ROCKETCHAT_USER_ID?.trim();
+      const envUsername = env?.ROCKETCHAT_USERNAME?.trim();
+      const envPassword = env?.ROCKETCHAT_PASSWORD?.trim();
       const envUrl = env?.ROCKETCHAT_URL?.trim();
       const account = resolveRocketChatAccount({ cfg });
-      return isRocketChatAccountConfigured(account) || Boolean(envUrl && envToken && envUserId);
+      return (
+        isRocketChatAccountConfigured(account) ||
+        Boolean(envUrl && ((envToken && envUserId) || (envUsername && envPassword)))
+      );
     },
     describeAccount: (account) => ({
       accountId: account.accountId,

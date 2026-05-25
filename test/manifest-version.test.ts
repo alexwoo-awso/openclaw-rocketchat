@@ -61,3 +61,29 @@ test("manifest channelConfigs wraps the Rocket.Chat config schema", () => {
   assert.equal(channelConfig.description, "Rocket.Chat channel plugin");
   assert.deepEqual(channelConfig.schema, manifest.configSchema);
 });
+
+test("manifest channel account schema supports login auth fields", () => {
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(pluginRoot, "openclaw.plugin.json"), "utf8"),
+  ) as {
+    channelConfigs?: {
+      rocketchat?: {
+        schema?: {
+          properties?: {
+            accounts?: {
+              additionalProperties?: {
+                properties?: Record<string, unknown>;
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+
+  const accountProperties =
+    manifest.channelConfigs?.rocketchat?.schema?.properties?.accounts?.additionalProperties
+      ?.properties;
+  assert.ok(accountProperties?.username, "account schema username field is missing");
+  assert.ok(accountProperties?.password, "account schema password field is missing");
+});
