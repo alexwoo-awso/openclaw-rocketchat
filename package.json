@@ -1,6 +1,6 @@
 {
   "name": "@alexwoo-awso/openclaw-rocketchat",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "description": "OpenClaw Rocket.Chat channel plugin",
   "license": "MIT",
   "type": "module",
@@ -31,13 +31,13 @@
     "test": "node --import tsx --test test/**/*.test.ts"
   },
   "devDependencies": {
+    "openclaw": "^2026.4.23",
     "tsup": "^8.5.0",
     "tsx": "^4.20.5",
     "typescript": "^5.7.3",
     "zod": "^4.3.6"
   },
   "dependencies": {
-    "openclaw": "^2026.4.23",
     "typebox": "^1.1.28",
     "ws": "^8.18.0"
   },
@@ -52,6 +52,8 @@
     "extensions": [
       "./dist/index.js"
     ],
+    "setupEntry": "./setup-entry.ts",
+    "runtimeSetupEntry": "./dist/setup-entry.js",
     "compat": {
       "pluginApi": "^2026.4.23"
     },

@@ -41,6 +41,8 @@ const RocketChatAccountSchemaBase = z
     configWrites: z.boolean().optional(),
     authToken: z.string().optional(),
     userId: z.string().optional(),
+    username: z.string().optional(),
+    password: z.string().optional(),
     baseUrl: z.string().optional(),
     chatmode: z.enum(["oncall", "onmessage", "onchar"]).optional(),
     oncharPrefixes: z.array(z.string()).optional(),
