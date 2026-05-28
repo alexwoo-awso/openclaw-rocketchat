@@ -236,6 +236,51 @@ Accepted `--to` formats:
 
 When sending to a user, the plugin creates or reuses a Rocket.Chat DM room for that user.
 
+## TweetClaw X/Twitter companion workflow
+
+Teams that coordinate social support, growth, or incident response from Rocket.Chat can pair this channel with [TweetClaw](https://github.com/Xquik-dev/tweetclaw) as a separate OpenClaw plugin.
+
+This repository stays responsible for Rocket.Chat transport: DMs, channels, private groups, threads, file handling, and room access control. TweetClaw is an optional third-party plugin for X/Twitter work such as search tweets, search tweet replies, follower export, user lookup, media workflows, monitor tweets, webhooks, giveaway draws, and approval-reviewed post tweets or post tweet replies.
+
+Install both plugins:
+
+```bash
+openclaw plugins install @alexwoo-awso/openclaw-rocketchat
+openclaw plugins install @xquik/tweetclaw@1.6.31
+openclaw plugins inspect tweetclaw --runtime
+```
+
+Allow TweetClaw tools alongside your normal OpenClaw tools:
+
+```json
+{
+  "tools": {
+    "alsoAllow": ["explore", "tweetclaw"]
+  }
+}
+```
+
+If `tools.alsoAllow` already contains other tools, append `explore` and `tweetclaw` to the existing list instead of replacing it.
+
+Keep the two configs separate:
+
+- `channels.rocketchat.*` holds Rocket.Chat server, room, and bot credentials.
+- TweetClaw uses its own Xquik API key, credit, or MPP configuration.
+- Do not put Xquik keys or TweetClaw billing settings in `channels.rocketchat`.
+- Keep `dmPolicy`, `allowFrom`, `groupPolicy`, and `groupAllowFrom` tight for rooms that can request social actions.
+
+Suggested room workflow:
+
+```text
+User in #growth: !search tweets about OpenClaw release feedback
+Agent: uses TweetClaw to search tweets and replies, then summarizes results in the Rocket.Chat thread
+
+User: draft a reply to this tweet
+Agent: prepares the TweetClaw post tweet reply call and waits for explicit approval before sending
+```
+
+For write-like, paid, private, bulk, or recurring work, review the structured TweetClaw request before approving the tool call. This includes post tweets, post tweet replies, direct messages, media upload, monitor tweets, webhooks, profile changes, and giveaway draws.
+
 ## Architecture
 
 - DDP WebSocket for realtime inbound messages
