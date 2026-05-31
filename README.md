@@ -281,6 +281,50 @@ Agent: prepares the TweetClaw post tweet reply call and waits for explicit appro
 
 For write-like, paid, private, bulk, or recurring work, review the structured TweetClaw request before approving the tool call. This includes post tweets, post tweet replies, direct messages, media upload, monitor tweets, webhooks, profile changes, and giveaway draws.
 
+## GetXAPI X/Twitter companion workflow
+
+Teams that prefer an HTTP-only Twitter/X data backend can pair this channel with [GetXAPI](https://github.com/getxapi/getxapi-mcp) as an alternative companion alongside the TweetClaw recipe above.
+
+This repository stays responsible for Rocket.Chat transport. GetXAPI exposes read-only tweet, user, and search endpoints through a single REST surface, which keeps the Rocket.Chat plugin focused on chat transport while a separate process handles X/Twitter reads.
+
+Install this plugin and configure a GetXAPI key alongside it:
+
+```bash
+openclaw plugins install @alexwoo-awso/openclaw-rocketchat
+export GETXAPI_API_KEY=...
+```
+
+Suggested env layout for the agent process that calls GetXAPI:
+
+```bash
+GETXAPI_API_KEY=...
+GETXAPI_ENABLE_ACTIONS=false
+```
+
+`GETXAPI_ENABLE_ACTIONS` stays `false` by default so the backend is read-only. Flip it to `true` only after reviewing the action surface, the same way you would gate TweetClaw write tools.
+
+Keep the two configs separate:
+
+- `channels.rocketchat.*` holds Rocket.Chat server, room, and bot credentials.
+- GetXAPI uses its own `GETXAPI_API_KEY` environment variable.
+- Do not put GetXAPI keys in `channels.rocketchat`.
+- Keep `dmPolicy`, `allowFrom`, `groupPolicy`, and `groupAllowFrom` tight for rooms that can request social actions.
+
+Suggested room workflow:
+
+```text
+User in #growth: !search tweets about OpenClaw release feedback
+Agent: calls GetXAPI advanced_search, summarizes results in the Rocket.Chat thread
+
+User: pull the latest tweets from @some_user
+Agent: calls GetXAPI user timeline endpoint, posts the digest into the thread
+```
+
+GetXAPI endpoint reference:
+
+- `GET https://api.getxapi.com/twitter/tweet/advanced_search?q=<query>`
+- Header: `Authorization: Bearer ${GETXAPI_API_KEY}`
+
 ## Architecture
 
 - DDP WebSocket for realtime inbound messages
