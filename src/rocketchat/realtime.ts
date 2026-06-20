@@ -10,6 +10,7 @@ export type DDPMessage = {
     eventName?: string;
     args?: unknown[];
   };
+  subs?: string[];
   result?: unknown;
   error?: unknown;
 };
@@ -17,6 +18,8 @@ export type DDPMessage = {
 export type RealtimeCallbacks = {
   onMessage: (roomId: string, message: RocketChatMessage) => void;
   onReady?: (controls: RealtimeControls) => void;
+  onSubscriptionReady?: (target: string) => void;
+  onSubscriptionError?: (target: string, err: Error) => void;
   onConnected?: () => void;
   onDisconnected?: (code: number, reason: string) => void;
   onError?: (err: Error) => void;
@@ -46,6 +49,7 @@ export function createRealtimeConnection(params: {
   abortSignal?: AbortSignal;
   /** Max silence before force-terminating (ms). Default 120 000. */
   watchdogTimeoutMs?: number;
+  roomIds?: string[];
   webSocketImpl?: typeof WebSocket;
 }): Promise<void> {
   const { baseUrl, authToken, callbacks, abortSignal } = params;
@@ -61,6 +65,7 @@ export function createRealtimeConnection(params: {
     let opened = false;
     let authenticated = false;
     let preferredTypingIdentity: string | null = null;
+    const subscriptionTargets = new Map<string, string>();
     const pendingMethods = new Map<
       string,
       {
@@ -108,6 +113,19 @@ export function createRealtimeConnection(params: {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(msg));
       }
+    };
+
+    const subscribeToRoomMessages = (target: string) => {
+      const normalizedTarget = target.trim();
+      if (!normalizedTarget) return;
+      const id = nextDdpId();
+      subscriptionTargets.set(id, normalizedTarget);
+      ddpSend({
+        msg: "sub",
+        id,
+        name: "stream-room-messages",
+        params: [normalizedTarget, { useCollection: false, args: [] }],
+      });
     };
 
     const callMethod = async (
@@ -237,6 +255,28 @@ export function createRealtimeConnection(params: {
         return;
       }
 
+      if (data.msg === "ready" && Array.isArray(data.subs)) {
+        for (const subId of data.subs) {
+          const target = subscriptionTargets.get(subId);
+          if (!target) continue;
+          callbacks.onSubscriptionReady?.(target);
+        }
+        return;
+      }
+
+      if (data.msg === "nosub" && data.id) {
+        const target = subscriptionTargets.get(data.id);
+        if (!target) return;
+        subscriptionTargets.delete(data.id);
+        const errMsg = data.error
+          ? typeof data.error === "object"
+            ? (data.error as { message?: string }).message ?? JSON.stringify(data.error)
+            : String(data.error)
+          : "Rocket.Chat DDP subscription failed";
+        callbacks.onSubscriptionError?.(target, new Error(errMsg));
+        return;
+      }
+
       if (data.msg === "result" && !authenticated) {
         if (data.error) {
           const errMsg = typeof data.error === "object"
@@ -250,13 +290,14 @@ export function createRealtimeConnection(params: {
         callbacks.onReady?.(controls);
         callbacks.onConnected?.();
 
-        // Subscribe to all messages for the authenticated user
-        ddpSend({
-          msg: "sub",
-          id: nextDdpId(),
-          name: "stream-room-messages",
-          params: ["__my_messages__", { useCollection: false, args: [] }],
-        });
+        const roomTargets = Array.from(
+          new Set((params.roomIds ?? []).map((roomId) => roomId.trim()).filter(Boolean)),
+        ).filter((roomId) => roomId !== "__my_messages__");
+
+        subscribeToRoomMessages("__my_messages__");
+        for (const roomId of roomTargets) {
+          subscribeToRoomMessages(roomId);
+        }
 
         // Start client-side DDP pings to proactively detect dead connections
         // (e.g. after VM suspend/resume where server pings won't arrive)

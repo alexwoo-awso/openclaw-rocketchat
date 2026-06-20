@@ -30,6 +30,7 @@ import {
   resolveRocketChatAccount,
   resolveRocketChatConversationWindowMinutes,
 } from "./accounts.js";
+import type { RocketChatAccountConfig } from "../types.js";
 import {
   createRocketChatClient,
   fetchChannel,
@@ -99,6 +100,16 @@ const recentInboundMessages = createDedupeCache({
   ttlMs: RECENT_MESSAGE_TTL_MS,
   maxSize: RECENT_MESSAGE_MAX,
 });
+
+function listConfiguredRoomIds(cfg: OpenClawConfig, accountConfig: RocketChatAccountConfig): string[] {
+  const baseRooms = (cfg.channels?.rocketchat as RocketChatAccountConfig | undefined)?.rooms;
+  return Array.from(
+    new Set([
+      ...Object.keys(baseRooms ?? {}),
+      ...Object.keys(accountConfig.rooms ?? {}),
+    ].map((roomId) => roomId.trim()).filter(Boolean)),
+  );
+}
 
 function resolveRuntime(opts: MonitorRocketChatOpts): RuntimeEnv {
   return (
@@ -988,9 +999,16 @@ export async function monitorRocketChatProvider(opts: MonitorRocketChatOpts = {}
       baseUrl,
       authToken: client.authToken,
       abortSignal: opts.abortSignal,
+      roomIds: listConfiguredRoomIds(cfg, account.config),
       callbacks: {
         onReady: (controls) => {
           realtimeControls = controls;
+        },
+        onSubscriptionReady: (target) => {
+          runtime.log?.(`rocketchat DDP subscription ready: ${target}`);
+        },
+        onSubscriptionError: (target, err) => {
+          runtime.error?.(`rocketchat DDP subscription failed for ${target}: ${String(err)}`);
         },
         onMessage: (roomId, message) => {
           debouncer.enqueue({ roomId, msg: message }).catch((err) => {
