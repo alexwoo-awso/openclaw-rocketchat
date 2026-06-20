@@ -198,3 +198,95 @@ test("realtime controls retry room typing with fallback identity after DDP rejec
     await connection;
   }
 });
+
+test("realtime connection subscribes to configured room ids", async () => {
+  FakeWebSocket.instances.length = 0;
+  let socket: FakeWebSocket | undefined;
+  const readyTargets: string[] = [];
+
+  const connection = createRealtimeConnection({
+    baseUrl: "https://chat.example.com",
+    authToken: "token-123",
+    roomIds: ["ROOM1", "ROOM2", "ROOM1", " "],
+    callbacks: {
+      onMessage: () => {},
+      onSubscriptionReady: (target) => {
+        readyTargets.push(target);
+      },
+    },
+    webSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+  });
+
+  try {
+    socket = FakeWebSocket.instances[0];
+    assert.ok(socket);
+
+    socket.emit("open");
+    socket.emit("message", Buffer.from(JSON.stringify({ msg: "connected" })));
+    socket.emit("message", Buffer.from(JSON.stringify({ msg: "result", result: {} })));
+
+    const subPayloads = socket.sent
+      .map((entry) => JSON.parse(entry) as { msg?: string; id?: string; name?: string; params?: unknown[] })
+      .filter((entry) => entry.msg === "sub");
+
+    assert.deepEqual(
+      subPayloads.map((entry) => entry.params?.[0]),
+      ["__my_messages__", "ROOM1", "ROOM2"],
+    );
+    assert.ok(subPayloads.every((entry) => entry.name === "stream-room-messages"));
+
+    socket.emit(
+      "message",
+      Buffer.from(JSON.stringify({ msg: "ready", subs: subPayloads.map((entry) => entry.id) })),
+    );
+    assert.deepEqual(readyTargets, ["__my_messages__", "ROOM1", "ROOM2"]);
+  } finally {
+    socket?.close();
+    await connection;
+  }
+});
+
+test("realtime connection dispatches direct room subscription events by message room id", async () => {
+  FakeWebSocket.instances.length = 0;
+  let socket: FakeWebSocket | undefined;
+  const received: Array<{ roomId: string; messageId: string }> = [];
+
+  const connection = createRealtimeConnection({
+    baseUrl: "https://chat.example.com",
+    authToken: "token-123",
+    roomIds: ["ROOM1"],
+    callbacks: {
+      onMessage: (roomId, message) => {
+        received.push({ roomId, messageId: message._id ?? "" });
+      },
+    },
+    webSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+  });
+
+  try {
+    socket = FakeWebSocket.instances[0];
+    assert.ok(socket);
+
+    socket.emit("open");
+    socket.emit("message", Buffer.from(JSON.stringify({ msg: "connected" })));
+    socket.emit("message", Buffer.from(JSON.stringify({ msg: "result", result: {} })));
+    socket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          msg: "changed",
+          collection: "stream-room-messages",
+          fields: {
+            eventName: "ROOM1",
+            args: [{ _id: "MSG1", rid: "ROOM1", msg: "hello", u: { _id: "USER1" } }],
+          },
+        }),
+      ),
+    );
+
+    assert.deepEqual(received, [{ roomId: "ROOM1", messageId: "MSG1" }]);
+  } finally {
+    socket?.close();
+    await connection;
+  }
+});
