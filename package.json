@@ -1,6 +1,6 @@
 {
   "name": "@alexwoo-awso/openclaw-rocketchat",
-  "version": "0.3.10",
+  "version": "0.3.11",
   "description": "OpenClaw Rocket.Chat channel plugin",
   "license": "MIT",
   "type": "module",
